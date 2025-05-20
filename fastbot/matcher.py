@@ -1,31 +1,32 @@
-from dataclasses import KW_ONLY, dataclass, field
-from typing import Callable
+from typing import Callable, Literal
 
 
-@dataclass
 class Matcher:
-    rule: Callable[..., bool] = field(default=lambda: True)
+    __slots__ = ("rule", "matchers", "operator")
 
-    _: KW_ONLY
-
-    matchers: list["Matcher"] = field(default_factory=list)
-    operator: str | None = field(default=None)
+    def __init__(
+        self,
+        rule: Callable[..., bool] = lambda: True,
+        *,
+        matchers: list["Matcher"] | None = None,
+        operator: Literal["and", "or"] | None = None,
+    ) -> None:
+        self.rule = rule
+        self.matchers = matchers or []
+        self.operator = operator
 
     def __call__(self, *args, **kwargs) -> bool:
         match self.operator:
             case "and":
                 return all(matcher(*args, **kwargs) for matcher in self.matchers)
-
             case "or":
                 return any(matcher(*args, **kwargs) for matcher in self.matchers)
-
             case _:
                 return self.rule(*args, **kwargs)
 
     def __and__(self, other: "Matcher") -> "Matcher":
         if self.operator == "and":
             self.matchers.append(other)
-
             return self
 
         else:
@@ -34,7 +35,6 @@ class Matcher:
     def __or__(self, other: "Matcher") -> "Matcher":
         if self.operator == "or":
             self.matchers.append(other)
-
             return self
 
         else:

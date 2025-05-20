@@ -1,104 +1,98 @@
 import logging
-from dataclasses import KW_ONLY, dataclass
-from typing import ClassVar, Literal, Self, override
+from typing import ClassVar, Literal, override
 
 from fastbot.event import Context, Event
 
 
-@dataclass
 class NoticeEvent(Event):
-    _: KW_ONLY
+    __slots__ = ("notice_type",)
 
-    post_type: Literal["notice"] = "notice"
+    post_type: ClassVar[Literal["notice"]] = "notice"
 
     notice_type: str
 
-    event_type: ClassVar[dict[str, type["NoticeEvent"]]] = {}
+    event: ClassVar[dict[str, type["NoticeEvent"]]] = {}
+
+    def __init__(self, *, ctx: Context) -> None:
+        super().__init__(ctx=ctx)
+
+        logging.info(self.__repr__())
 
     def __init_subclass__(cls, *args, **kwargs) -> None:
-        NoticeEvent.event_type[cls.notice_type] = cls
+        NoticeEvent.event[cls.notice_type] = cls
 
     @classmethod
     @override
-    def from_ctx(cls, *, ctx: Context) -> "NoticeEvent":
+    def dispatch(cls, *, ctx: Context) -> "NoticeEvent":
         return (
-            event.from_ctx(ctx=ctx)
-            if (event := cls.event_type.get(ctx["notice_type"]))
-            else cls(
-                ctx=ctx,
-                time=ctx["time"],
-                self_id=ctx["self_id"],
-                post_type=ctx["post_type"],
-                notice_type=ctx["notice_type"],
-            )
+            event(ctx=ctx)
+            if (event := cls.event.get(ctx["notice_type"]))
+            else cls(ctx=ctx)
         )
 
 
-@dataclass
 class GroupFileUploadNoticeEvent(NoticeEvent):
-    @dataclass
+    __slots__ = ("group_id", "user_id", "file")
+
     class File:
-        _: KW_ONLY
+        __slots__ = ("id", "name", "size", "busid")
 
-        id: str
-        name: str
-        size: int
-        busid: int
+        def __init__(self, *, id: str, name: str, size: int, busid: int) -> None:
+            self.id = id
+            self.name = name
+            self.size = size
+            self.busid = busid
 
-    _: KW_ONLY
+        def __repr__(self) -> str:
+            return f"""{self.__class__.__name__}({
+                ", ".join(
+                    f"{item}={value}"
+                    for item in self.__slots__
+                    if (not item.startswith("__"))
+                    and (value := getattr(self, item, None))
+                )
+            })"""
 
-    notice_type: Literal["group_upload"] = "group_upload"
+    notice_type: ClassVar[Literal["group_upload"]] = "group_upload"
 
     group_id: int
     user_id: int
     file: File
 
-    def __post_init__(self) -> None:
-        logging.debug(self.__repr__())
+    def __init__(self, *, ctx: Context) -> None:
+        self.group_id = ctx["group_id"]
+        self.user_id = ctx["user_id"]
 
         self.file = self.File(
-            **{
-                k: v
-                for k, v in self.ctx["file"].items()
-                if k in self.File.__dataclass_fields__
-            }
+            id=ctx["id"], name=ctx["name"], size=ctx["size"], busid=ctx["busid"]
         )
 
-    @classmethod
-    @override
-    def from_ctx(cls, *, ctx: Context) -> Self:
-        return cls(
-            ctx=ctx, **{k: v for k, v in ctx.items() if k in cls.__dataclass_fields__}
-        )
+        super().__init__(ctx=ctx)
 
 
-@dataclass
 class GroupAdminChangeNoticeEvent(NoticeEvent):
-    _: KW_ONLY
+    __slots__ = ("sub_type", "group_id", "user_id")
 
-    notice_type: Literal["group_admin"] = "group_admin"
+    notice_type: ClassVar[Literal["group_admin"]] = "group_admin"
 
     sub_type: Literal["set", "unset"]
 
     group_id: int
     user_id: int
 
-    def __post_init__(self) -> None:
-        logging.debug(self.__repr__())
+    def __init__(self, *, ctx: Context) -> None:
+        self.sub_type = ctx["sub_type"]
 
-    @classmethod
-    @override
-    def from_ctx(cls, *, ctx: Context) -> Self:
-        return cls(
-            ctx=ctx, **{k: v for k, v in ctx.items() if k in cls.__dataclass_fields__}
-        )
+        self.group_id = ctx["group_id"]
+        self.user_id = ctx["user_id"]
+
+        super().__init__(ctx=ctx)
 
 
-@dataclass
 class GroupMemberDecreaseNoticeEvent(NoticeEvent):
-    _: KW_ONLY
+    __slots__ = ("sub_type", "group_id", "user_id", "operator_id")
 
-    notice_type: Literal["group_decrease"] = "group_decrease"
+    notice_type: ClassVar[Literal["group_decrease"]] = "group_decrease"
 
     sub_type: Literal["leave", "kick", "kick_me"]
 
@@ -106,86 +100,75 @@ class GroupMemberDecreaseNoticeEvent(NoticeEvent):
     user_id: int
     operator_id: int
 
-    def __post_init__(self) -> None:
-        logging.debug(self.__repr__())
+    def __init__(self, *, ctx: Context) -> None:
+        self.sub_type = ctx["sub_type"]
 
-    @classmethod
-    @override
-    def from_ctx(cls, *, ctx: Context) -> Self:
-        return cls(
-            ctx=ctx, **{k: v for k, v in ctx.items() if k in cls.__dataclass_fields__}
-        )
+        self.group_id = ctx["group_id"]
+        self.user_id = ctx["user_id"]
+        self.operator_id = ctx["operator_id"]
+
+        super().__init__(ctx=ctx)
 
 
-@dataclass
 class GroupMemberIncreaseNoticeEvent(NoticeEvent):
-    _: KW_ONLY
+    __slots__ = ("sub_type", "group_id", "user_id", "operator_id")
 
-    notice_type: Literal["group_increase"] = "group_increase"
+    notice_type: ClassVar[Literal["group_increase"]] = "group_increase"
 
     sub_type: Literal["approve", "invite"]
 
     group_id: int
-    operator_id: int
     user_id: int
+    operator_id: int
 
-    def __post_init__(self) -> None:
-        logging.debug(self.__repr__())
+    def __init__(self, *, ctx: Context) -> None:
+        self.sub_type = ctx["sub_type"]
 
-    @classmethod
-    @override
-    def from_ctx(cls, *, ctx: Context) -> Self:
-        return cls(
-            ctx=ctx, **{k: v for k, v in ctx.items() if k in cls.__dataclass_fields__}
-        )
+        self.group_id = ctx["group_id"]
+        self.user_id = ctx["user_id"]
+        self.operator_id = ctx["operator_id"]
+
+        super().__init__(ctx=ctx)
 
 
-@dataclass
 class GroupBanNoticeEvent(NoticeEvent):
-    _: KW_ONLY
+    __slots__ = ("sub_type", "group_id", "user_id", "operator_id", "duration")
 
-    notice_type: Literal["group_ban"] = "group_ban"
+    notice_type: ClassVar[Literal["group_ban"]] = "group_ban"
 
     sub_type: Literal["ban", "lift_ban"]
 
     group_id: int
-    operator_id: int
     user_id: int
+    operator_id: int
     duration: int
 
-    def __post_init__(self) -> None:
-        logging.debug(self.__repr__())
+    def __init__(self, *, ctx: Context) -> None:
+        self.sub_type = ctx["sub_type"]
 
-    @classmethod
-    @override
-    def from_ctx(cls, *, ctx: Context) -> Self:
-        return cls(
-            ctx=ctx, **{k: v for k, v in ctx.items() if k in cls.__dataclass_fields__}
-        )
+        self.group_id = ctx["group_id"]
+        self.user_id = ctx["user_id"]
+        self.operator_id = ctx["operator_id"]
+        self.duration = ctx["duration"]
+
+        super().__init__(ctx=ctx)
 
 
-@dataclass
 class FriendAddNoticeEvent(NoticeEvent):
-    _: KW_ONLY
+    __slots__ = ("user_id",)
 
-    notice_type: Literal["friend_add"] = "friend_add"
+    notice_type: ClassVar[Literal["friend_add"]] = "friend_add"
 
     user_id: int
 
-    def __post_init__(self) -> None:
-        logging.debug(self.__repr__())
+    def __init__(self, *, ctx: Context) -> None:
+        self.user_id = ctx["user_id"]
 
-    @classmethod
-    @override
-    def from_ctx(cls, *, ctx: Context) -> Self:
-        return cls(
-            ctx=ctx, **{k: v for k, v in ctx.items() if k in cls.__dataclass_fields__}
-        )
+        super().__init__(ctx=ctx)
 
 
-@dataclass
 class GroupMessageRecallNoticeEvent(NoticeEvent):
-    _: KW_ONLY
+    __slots__ = ("group_id", "user_id", "operator_id", "message_id")
 
     notice_type: Literal["group_recall"] = "group_recall"
 
@@ -194,32 +177,25 @@ class GroupMessageRecallNoticeEvent(NoticeEvent):
     operator_id: int
     message_id: int
 
-    def __post_init__(self) -> None:
-        logging.debug(self.__repr__())
+    def __init__(self, *, ctx: Context) -> None:
+        self.group_id = ctx["group_id"]
+        self.user_id = ctx["user_id"]
+        self.operator_id = ctx["operator_id"]
+        self.message_id = ctx["message_id"]
 
-    @classmethod
-    @override
-    def from_ctx(cls, *, ctx: Context) -> Self:
-        return cls(
-            ctx=ctx, **{k: v for k, v in ctx.items() if k in cls.__dataclass_fields__}
-        )
+        super().__init__(ctx=ctx)
 
 
-@dataclass
 class FriendMessageRecallNoticeEvent(NoticeEvent):
-    _: KW_ONLY
+    __slots__ = ("user_id", "message_id")
 
     notice_type: Literal["friend_recall"] = "friend_recall"
 
     user_id: int
     message_id: int
 
-    def __post_init__(self) -> None:
-        logging.debug(self.__repr__())
+    def __init__(self, *, ctx: Context) -> None:
+        self.user_id = ctx["user_id"]
+        self.message_id = ctx["message_id"]
 
-    @classmethod
-    @override
-    def from_ctx(cls, *, ctx: Context) -> Self:
-        return cls(
-            ctx=ctx, **{k: v for k, v in ctx.items() if k in cls.__dataclass_fields__}
-        )
+        super().__init__(ctx=ctx)

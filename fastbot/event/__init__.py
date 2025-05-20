@@ -1,34 +1,42 @@
-from dataclasses import KW_ONLY, dataclass, field
+import logging
 from typing import Any, ClassVar, Literal, TypeAlias
 
 Context: TypeAlias = dict[str, Any]
 
 
-@dataclass
 class Event:
-    _: KW_ONLY
-
-    ctx: Context = field(repr=False)
+    __slots__ = ("ctx", "post_type", "time", "self_id")
 
     post_type: Literal["message", "notice", "request", "meta_event"]
-
     time: int
     self_id: int
 
-    event_type: ClassVar[dict[str, type["Event"]]] = {}
+    event: ClassVar[dict[str, type["Event"]]] = {}
+
+    def __init__(self, *, ctx: Context) -> None:
+        self.ctx = ctx
+
+        self.time = ctx["time"]
+        self.self_id = ctx["self_id"]
+
+        logging.debug(self.__repr__())
 
     def __init_subclass__(cls, *args, **kwargs) -> None:
-        Event.event_type[cls.post_type] = cls
+        Event.event[cls.post_type] = cls
+
+    def __repr__(self) -> str:
+        return f"""{self.__class__.__name__}({
+            ", ".join(
+                f"{item}={value}"
+                for item in self.__slots__
+                if (not item.startswith("__")) and (value := getattr(self, item, None))
+            )
+        })"""
 
     @classmethod
-    def from_ctx(cls, *, ctx: Context) -> "Event":
+    def dispatch(cls, *, ctx: Context) -> "Event":
         return (
-            event.from_ctx(ctx=ctx)
-            if (event := cls.event_type.get(ctx["post_type"]))
-            else cls(
-                ctx=ctx,
-                time=ctx["time"],
-                self_id=ctx["self_id"],
-                post_type=ctx["post_type"],
-            )
+            event.dispatch(ctx=ctx)
+            if (event := cls.event.get(ctx["post_type"]))
+            else cls(ctx=ctx)
         )

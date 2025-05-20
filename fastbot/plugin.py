@@ -3,7 +3,6 @@ import logging
 from bisect import insort
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from contextvars import ContextVar
-from dataclasses import KW_ONLY, dataclass, field
 from functools import wraps
 from heapq import merge
 from importlib.util import module_from_spec, spec_from_file_location
@@ -24,34 +23,40 @@ from fastbot.event import Context, Event
 from fastbot.matcher import Matcher
 
 
-@dataclass(slots=True)
 class Plugin:
-    @dataclass(slots=True)
+    __slots__ = ("state", "init", "backgrounds", "middlewares", "executors")
+
     class Middleware:
-        _: KW_ONLY
+        __slots__ = ("executor", "priority")
 
-        priority: int = 0
-        executor: Callable[..., Any]
+        def __init__(self, *, executor: Callable[..., Any], priority: int = 0) -> None:
+            self.executor = executor
+            self.priority = priority
 
-    _: KW_ONLY
+    def __init__(
+        self,
+        state: ContextVar[bool] = ContextVar("state", default=True),
+        init: Callable[..., Any] | None = None,
+        backgrounds: list[Callable[..., Any]] | None = None,
+        middlewares: list[Middleware] | None = None,
+        executors: list[Callable[..., Any]] | None = None,
+    ) -> None:
+        self.state = state
 
-    state: ContextVar[bool] = ContextVar("state", default=True)
-
-    init: Callable[..., Any] | None = None
-    backgrounds: list[Callable[..., Any]] = field(default_factory=list)
-
-    middlewares: list[Middleware] = field(default_factory=list)
-    executors: list[Callable[..., Any]] = field(default_factory=list)
+        self.init = init
+        self.backgrounds = backgrounds or []
+        self.middlewares = middlewares or []
+        self.executors = executors or []
 
     async def run(self, *, event: Event) -> list[Any]:
         return await asyncio.gather(*(executor(event) for executor in self.executors))
 
 
-@dataclass(slots=True)
 class Dependency:
-    _: KW_ONLY
+    __slots__ = ("dependency",)
 
-    dependency: Callable[..., Any]
+    def __init__(self, *, dependency: Callable[..., Any]) -> None:
+        self.dependency = dependency
 
     @classmethod
     def provide(cls, dependency: Callable[..., Any]) -> Any:
@@ -122,7 +127,7 @@ class PluginManager:
 
                     return
 
-            event = Event.from_ctx(ctx=ctx)
+            event = Event.dispatch(ctx=ctx)
 
             await asyncio.gather(
                 *(

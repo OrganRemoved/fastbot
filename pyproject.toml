@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fastbot-onebot"
-version  = "2025.3.24"
+version  = "2025.5.20"
 dependencies = ["fastapi", "uvicorn", "websockets"]
 requires-python = ">=3"
 description = "A Lightweight BOT Framework."

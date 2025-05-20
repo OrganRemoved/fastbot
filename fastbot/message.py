@@ -13,6 +13,8 @@ class MessageSegmentData(TypedDict):
 
 
 class Link(list):
+    __slots__ = ("length", "maxlen")
+
     def __init__(
         self, iterable: Iterable[Any] | None = None, maxlen: int | None = None
     ) -> None:
@@ -203,8 +205,10 @@ class Link(list):
                 next_node[NEXT] = self
 
 
-@dataclass(slots=True)
+@dataclass
 class MessageSegment:
+    __slots__ = ("type", "data")
+
     _: KW_ONLY
 
     type: str
@@ -319,9 +323,11 @@ class MessageSegment:
                 type="node",
                 data={
                     "content": [
-                        asdict(segment)
-                        if isinstance(segment, MessageSegment)
-                        else segment
+                        (
+                            asdict(segment)
+                            if isinstance(segment, MessageSegment)
+                            else segment
+                        )
                         for segment in content
                     ],
                     **kwargs,
@@ -331,7 +337,9 @@ class MessageSegment:
             raise ValueError("parameter `id` or `content` must be specified")
 
 
-class Message(Link):
+class Message(list):
+    __slots__ = ()
+
     def __init__(
         self, content: str | Iterable[Any] | MessageSegment | None = None
     ) -> None:

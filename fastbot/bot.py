@@ -1,29 +1,15 @@
 import asyncio
-from contextlib import AsyncExitStack, asynccontextmanager
-from inspect import isasyncgenfunction
 import logging
 import os
+from contextlib import AsyncExitStack, asynccontextmanager
 from contextvars import ContextVar
-from functools import partial
+from inspect import isasyncgenfunction
 from typing import Any, AsyncGenerator, ClassVar, Iterable, Self
-from weakref import WeakValueDictionary
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketException, status
 
 from fastbot.plugin import PluginManager
-
-try:
-    import ujson as json
-
-    json.dumps = partial(json.dumps, ensure_ascii=False, sort_keys=False)
-
-except ImportError:
-    import json
-
-    json.dumps = partial(
-        json.dumps, ensure_ascii=False, separators=(",", ":"), sort_keys=False
-    )
 
 
 class FastBot:
@@ -31,7 +17,7 @@ class FastBot:
 
     app: ClassVar[FastAPI]
 
-    connectors: ClassVar[WeakValueDictionary[int, WebSocket]] = WeakValueDictionary()
+    connectors: ClassVar[dict[int, WebSocket]] = {}
     futures: ClassVar[dict[int, asyncio.Future]] = {}
 
     self_id: ClassVar[ContextVar[int | None]] = ContextVar("self_id", default=None)
@@ -90,30 +76,33 @@ class FastBot:
 
         cls.connectors[self_id] = websocket
 
-        await cls.event_handler(websocket=websocket)
+        try:
+            await cls.event_handler(websocket=websocket)
+        finally:
+            del cls.connectors[self_id]
 
     @classmethod
-    async def event_handler(cls, websocket: WebSocket) -> None:
-        async with asyncio.TaskGroup() as tg:
-            while True:
-                match message := await websocket.receive():
-                    case {"bytes": data} | {"text": data}:
-                        if "post_type" in (ctx := json.loads(data)):
-                            cls.self_id.set(ctx.get("self_id"))
+    async def event_handler(
+        cls, websocket: WebSocket, *, background_tasks: set[asyncio.Task] = set()
+    ) -> None:
+        async for ctx in websocket.iter_json():
+            if "post_type" in ctx:
+                cls.self_id.set(ctx.get("self_id"))
 
-                            tg.create_task(PluginManager.run(ctx=ctx))
+                task = asyncio.create_task(PluginManager.run(ctx=ctx))
+                background_tasks.add(task)
+                task.add_done_callback(background_tasks.discard)
 
-                        elif ctx["status"] == "ok":
-                            cls.futures[ctx["echo"]].set_result(ctx.get("data"))
+            elif ctx["status"] == "ok":
+                cls.futures[ctx["echo"]].set_result(ctx.get("data"))
 
-                        else:
-                            cls.futures[ctx["echo"]].set_exception(RuntimeError(ctx))
-
-                    case _:
-                        logging.warning(f"unknow websocket message received {message=}")
+            else:
+                cls.futures[ctx["echo"]].set_exception(RuntimeError(ctx))
 
     @classmethod
-    async def do(cls, *, endpoint: str, self_id: int | None = None, **kwargs) -> Any:
+    async def invoke(
+        cls, *, endpoint: str, self_id: int | None = None, **kwargs
+    ) -> Any:
         if not (
             self_id := (
                 self_id
@@ -131,10 +120,8 @@ class FastBot:
         cls.futures[future_id] = future
 
         try:
-            await cls.connectors[self_id].send_bytes(
-                json.dumps(
-                    {"action": endpoint, "params": kwargs, "echo": future_id}
-                ).encode(encoding="utf-8")
+            await cls.connectors[self_id].send_json(
+                {"action": endpoint, "params": kwargs, "echo": future_id}
             )
 
             return await future
@@ -172,9 +159,8 @@ class FastBot:
                 )
 
                 for plugin in PluginManager.plugins.values():
-                    if background := plugin.backgrounds:
-                        for task in background:
-                            tg.create_task(task())
+                    for task in plugin.backgrounds:
+                        tg.create_task(task())
 
                 yield
 
