@@ -88,7 +88,7 @@ class IsInGroupBlacklist(Matcher):
     def __init__(self, *blacklist):
         self.blacklist = blacklist
 
-    def __call__(self, event: GroupMessageEvent) -> bool:
+    async def __call__(self, event: GroupMessageEvent) -> bool:
         return event.group_id in self.blacklist
 
 
