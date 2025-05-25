@@ -12,7 +12,7 @@ class MetaEvent(Event):
 
     event: ClassVar[dict[str, type["MetaEvent"]]] = {}
 
-    def __init__(self, *, ctx: Context) -> None:
+    def __init__(self, ctx: Context) -> None:
         super().__init__(ctx=ctx)
 
     def __init_subclass__(cls, *args, **kwargs) -> None:

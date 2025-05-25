@@ -49,11 +49,13 @@ class Plugin:
         self.executors = executors or []
 
     async def run(self, *, event: Event) -> list[Any]:
-        return await asyncio.gather(*(executor(event) for executor in self.executors))
+        return await asyncio.gather(
+            *(asyncio.shield(executor(event)) for executor in self.executors)
+        )
 
 
 class Dependency:
-    __slots__ = ("dependency",)
+    __slots__ = "dependency"
 
     def __init__(self, *, dependency: Callable[..., Any]) -> None:
         self.dependency = dependency
@@ -87,14 +89,17 @@ class PluginManager:
             except Exception as e:
                 logging.exception(e)
 
-            finally:
-                if not (
-                    plugin.init
-                    or plugin.backgrounds
-                    or plugin.middlewares
-                    or plugin.executors
-                ):
-                    del cls.plugins[module_name]
+            if not (
+                plugin.init
+                or plugin.backgrounds
+                or plugin.middlewares
+                or plugin.executors
+            ):
+                logging.warning(
+                    f"unloaded plugin [{module_name}] from [{module_path}] due to missing matcher"
+                )
+
+                del cls.plugins[module_name]
 
         if (path := Path(path_to_import)).is_dir():
             for file in path.rglob("*.py"):
@@ -131,7 +136,7 @@ class PluginManager:
 
             await asyncio.gather(
                 *(
-                    plugin.run(event=event)
+                    asyncio.shield(plugin.run(event=event))
                     for plugin in cls.plugins.values()
                     if plugin.state.get()
                 )
@@ -225,10 +230,11 @@ def on(matcher: Matcher | Callable[..., bool] | None = None) -> Callable[..., An
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         sign = signature(func)
 
-        event_type = ()
-
-        for param in sign.parameters.values():
-            event_type += annotation_event_type(param.annotation)
+        event_type = tuple(
+            event
+            for param in sign.parameters.values()
+            for event in annotation_event_type(param.annotation)
+        )
 
         if matcher:
             if any(
@@ -239,7 +245,7 @@ def on(matcher: Matcher | Callable[..., bool] | None = None) -> Callable[..., An
 
                 @wraps(func)
                 async def wrapper(event: Event, **kwargs) -> Any:
-                    if isinstance(event, event_type) and matcher(event):
+                    if isinstance(event, event_type) and await matcher(event):
                         func_kwargs: dict[str, Any] = {}
                         tasks: dict[str, asyncio.Task] = {}
 
@@ -286,7 +292,7 @@ def on(matcher: Matcher | Callable[..., bool] | None = None) -> Callable[..., An
 
                 @wraps(func)
                 async def wrapper(event: Event, **kwargs) -> Any:
-                    if isinstance(event, event_type) and matcher(event):
+                    if isinstance(event, event_type) and await matcher(event):
                         return await func(event, **kwargs)
 
         else:

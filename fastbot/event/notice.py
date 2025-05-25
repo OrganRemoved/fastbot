@@ -37,7 +37,7 @@ class GroupFileUploadNoticeEvent(NoticeEvent):
     class File:
         __slots__ = ("id", "name", "size", "busid")
 
-        def __init__(self, *, id: str, name: str, size: int, busid: int) -> None:
+        def __init__(self, id: str, name: str, size: int, busid: int) -> None:
             self.id = id
             self.name = name
             self.size = size

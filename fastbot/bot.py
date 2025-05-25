@@ -114,7 +114,7 @@ class FastBot:
 
         logging.debug(f"{endpoint=} {self_id=} {kwargs=}")
 
-        future = asyncio.Future()
+        future = asyncio.get_running_loop().create_future()
         future_id = id(future)
 
         cls.futures[future_id] = future
