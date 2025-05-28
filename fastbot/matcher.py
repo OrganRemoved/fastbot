@@ -21,11 +21,20 @@ class Matcher:
     async def __call__(self, *args, **kwargs) -> bool | Awaitable[bool]:
         match self.operator:
             case "and":
-                return all(
-                    await asyncio.gather(
-                        *(matcher(*args, **kwargs) for matcher in self.matchers)
-                    )
-                )
+                tasks = [
+                    asyncio.create_task(matcher(*args, **kwargs))
+                    for matcher in self.matchers
+                ]
+
+                async for completed_task in asyncio.as_completed(tasks):
+                    if not await completed_task:
+                        for task in tasks:
+                            if not task.done() and not task.cancelled():
+                                task.cancel()
+
+                        return False
+
+                return True
 
             case "or":
                 tasks = [
@@ -33,7 +42,7 @@ class Matcher:
                     for matcher in self.matchers
                 ]
 
-                for completed_task in asyncio.as_completed(tasks):
+                async for completed_task in asyncio.as_completed(tasks):
                     if await completed_task:
                         for task in tasks:
                             if not task.done() and not task.cancelled():

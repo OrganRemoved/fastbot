@@ -17,7 +17,16 @@ from inspect import (
 from operator import attrgetter
 from pathlib import Path
 from types import UnionType
-from typing import Annotated, Any, Callable, ClassVar, Union, get_args, get_origin
+from typing import (
+    Annotated,
+    Any,
+    Awaitable,
+    Callable,
+    ClassVar,
+    Union,
+    get_args,
+    get_origin,
+)
 
 from fastbot.event import Context, Event
 from fastbot.matcher import Matcher
@@ -165,7 +174,12 @@ def middleware(*, priority: int = 0) -> Callable[..., Any]:
     return decorator
 
 
-def on(matcher: Matcher | Callable[..., bool] | None = None) -> Callable[..., Any]:
+def on(
+    matcher: Matcher
+    | Callable[..., bool]
+    | Callable[..., Awaitable[bool]]
+    | None = None,
+) -> Callable[..., Any]:
     def annotation_event_type(annotation: Any) -> tuple[type[Event], ...]:
         if get_origin(annotation) in (Annotated, Union, UnionType):
             return tuple(
