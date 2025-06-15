@@ -1,7 +1,13 @@
 import asyncio
 import logging
 from bisect import insort
-from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
+from contextlib import (
+    AbstractAsyncContextManager,
+    AbstractContextManager,
+    AsyncExitStack,
+    asynccontextmanager,
+    contextmanager,
+)
 from contextvars import ContextVar
 from functools import wraps
 from heapq import merge
@@ -229,7 +235,13 @@ def on(
 
         kwargs.update({k: v.result() for k, v in tasks.items()})
 
-        if isasyncgenfunction(func):
+        if isclass(func) and issubclass(func, AbstractAsyncContextManager):
+            return await stack.enter_async_context(func(**kwargs))
+
+        elif isclass(func) and issubclass(func, AbstractContextManager):
+            return stack.enter_context(func(**kwargs))
+
+        elif isasyncgenfunction(func):
             return await stack.enter_async_context(asynccontextmanager(func)(**kwargs))
 
         elif isgeneratorfunction(func):
