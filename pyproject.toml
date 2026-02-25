@@ -1,0 +1,15 @@
+[project]
+name = "fastbot"
+version = "2026.2.25"
+description = "a lightweight bot framework"
+readme = "README.md"
+requires-python = ">=3"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "websockets",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
